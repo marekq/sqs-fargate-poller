@@ -29,8 +29,8 @@ class SQSStack(core.Stack):
         # create a new SQS queue
         msg_queue = aws_sqs.Queue(self, 'SQSQueue',
             visibility_timeout = core.Duration.seconds(0),
-            retention_period = core.Duration.minutes(10),
-            queue_name = 'SQSQueue')
+            retention_period = core.Duration.minutes(10)
+        )
 
         # create the queue processing service on fargate with a locally built container
         # the pattern automatically adds an environment variable with the queue name for the container to read
@@ -51,6 +51,7 @@ class SQSStack(core.Stack):
             code = aws_lambda.Code.asset("lambda"),
             handler = "lambda.handler",
             timeout = core.Duration.seconds(60),
+            memory_size = 512,
             environment = {'SQS_QUEUE': msg_queue.queue_url},
             tracing = aws_lambda.Tracing.ACTIVE
         )
@@ -58,9 +59,8 @@ class SQSStack(core.Stack):
         # create a new cloudwatch rule running every minute and triggers the lambda function
         eventRule = aws_events.Rule(self, 'lambda-generator-1min-rule',
             enabled = True,
-            schedule = aws_events.Schedule.cron( minute='*' ))
+            schedule = aws_events.Schedule.cron( minute = '*' ))
         eventRule.add_target(aws_events_targets.LambdaFunction(sqs_lambda))
-
 
         # add the Lambda IAM permission to send SQS messages
         msg_queue.grant_send_messages(sqs_lambda)

@@ -1,8 +1,7 @@
 import boto3, os, random
 
-qurl = os.environ['SQS_QUEUE']
-
-sqs = boto3.client('sqs')
+qurl    = os.environ['SQS_QUEUE']
+sqs     = boto3.client('sqs')
 
 def handler(event, context):
     for x in range(100):

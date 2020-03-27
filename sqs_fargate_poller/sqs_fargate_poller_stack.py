@@ -37,12 +37,12 @@ class SQSStack(core.Stack):
         queue_processing_fargate_service = aws_ecs_patterns.QueueProcessingFargateService(self, "Service",
             cluster = cluster,
             memory_limit_mib = 512,
-            cpu = 512,
+            cpu = 256,
             image = container,
             enable_logging = True,
             desired_task_count = 0,
-            max_scaling_capacity = 5,
-            scaling_steps = [{"upper": 0, "change": -5}, {"lower": 10000, "change": +1}, {"lower": 50000, "change": +2}, {"lower": 100000, "change": +4}],
+            max_scaling_capacity = 3,
+            scaling_steps = [{"upper": 0, "change": -5}, {"lower": 1, "change": +1}, {"lower": 10000, "change": +2}],
             queue = msg_queue
         )
 

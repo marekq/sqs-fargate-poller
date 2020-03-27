@@ -29,7 +29,7 @@ class SQSStack(core.Stack):
         # create a new SQS queue
         msg_queue = aws_sqs.Queue(self, 'SQSQueue',
             visibility_timeout = core.Duration.seconds(0),
-            retention_period = core.Duration.minutes(10)
+            retention_period = core.Duration.minutes(30)
         )
 
         # create the queue processing service on fargate with a locally built container
@@ -37,11 +37,12 @@ class SQSStack(core.Stack):
         queue_processing_fargate_service = aws_ecs_patterns.QueueProcessingFargateService(self, "Service",
             cluster = cluster,
             memory_limit_mib = 512,
-            cpu = 256,
+            cpu = 512,
             image = container,
             enable_logging = True,
-            desired_task_count = 1,
-            max_scaling_capacity = 3,
+            desired_task_count = 0,
+            max_scaling_capacity = 5,
+            scaling_steps = [{"upper": 0, "change": -5}, {"lower": 10000, "change": +1}, {"lower": 50000, "change": +2}, {"lower": 100000, "change": +4}],
             queue = msg_queue
         )
 
@@ -50,16 +51,20 @@ class SQSStack(core.Stack):
             runtime = aws_lambda.Runtime.PYTHON_3_8,
             code = aws_lambda.Code.asset("lambda"),
             handler = "lambda.handler",
-            timeout = core.Duration.seconds(60),
+            timeout = core.Duration.seconds(180),
             memory_size = 512,
-            environment = {'SQS_QUEUE': msg_queue.queue_url},
-            tracing = aws_lambda.Tracing.ACTIVE
+            tracing = aws_lambda.Tracing.ACTIVE,
+            environment = {
+                'sqs_queue_url': msg_queue.queue_url,
+                'total_message_count': '10000',
+                'python_worker_threads' : '50'
+            }
         )
         
-        # create a new cloudwatch rule running every minute and triggers the lambda function
-        eventRule = aws_events.Rule(self, 'lambda-generator-1min-rule',
+        # create a new cloudwatch rule running every 15 mins to trigger the lambda function
+        eventRule = aws_events.Rule(self, 'lambda-generator-15mins-rule',
             enabled = True,
-            schedule = aws_events.Schedule.cron( minute = '*' ))
+            schedule = aws_events.Schedule.cron(minute = '*/15'))
         eventRule.add_target(aws_events_targets.LambdaFunction(sqs_lambda))
 
         # add the Lambda IAM permission to send SQS messages

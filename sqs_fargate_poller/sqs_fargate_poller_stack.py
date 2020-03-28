@@ -42,7 +42,7 @@ class SQSStack(core.Stack):
             enable_logging = True,
             desired_task_count = 0,
             max_scaling_capacity = 3,
-            scaling_steps = [{"upper": 0, "change": -5}, {"lower": 1, "change": +1}, {"lower": 10000, "change": +2}],
+            scaling_steps = [{"upper": 0, "change": -5}, {"lower": 1, "change": +1}, {"lower": 20000, "change": +2}],
             queue = msg_queue
         )
 
@@ -56,15 +56,15 @@ class SQSStack(core.Stack):
             tracing = aws_lambda.Tracing.ACTIVE,
             environment = {
                 'sqs_queue_url': msg_queue.queue_url,
-                'total_message_count': '10000',
-                'python_worker_threads' : '50'
+                'total_message_count': 10000,
+                'python_worker_threads' : 50
             }
         )
         
-        # create a new cloudwatch rule running every 15 mins to trigger the lambda function
-        eventRule = aws_events.Rule(self, 'lambda-generator-15mins-rule',
+        # create a new cloudwatch rule running every hour to trigger the lambda function
+        eventRule = aws_events.Rule(self, 'lambda-generator-hourly-rule',
             enabled = True,
-            schedule = aws_events.Schedule.cron(minute = '*/15'))
+            schedule = aws_events.Schedule.cron(minute = '0'))
         eventRule.add_target(aws_events_targets.LambdaFunction(sqs_lambda))
 
         # add the Lambda IAM permission to send SQS messages

@@ -56,8 +56,8 @@ class SQSStack(core.Stack):
             tracing = aws_lambda.Tracing.ACTIVE,
             environment = {
                 'sqs_queue_url': msg_queue.queue_url,
-                'total_message_count': 10000,
-                'python_worker_threads' : 50
+                'total_message_count': "10000",
+                'python_worker_threads' : "50"
             }
         )
         

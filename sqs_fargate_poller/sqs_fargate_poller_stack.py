@@ -9,6 +9,8 @@ from aws_cdk import (
     aws_events_targets
 )
 
+from aws_cdk.aws_iam import PolicyStatement
+
 class SQSStack(core.Stack):
 
     def __init__(self, scope: core.Construct, id: str, **kwargs) -> None:
@@ -36,7 +38,7 @@ class SQSStack(core.Stack):
 
         # create the queue processing service on fargate with a locally built container
         # the pattern automatically adds an environment variable with the queue name for the container to read
-        queue_processing_fargate_service = aws_ecs_patterns.QueueProcessingFargateService(self, "Service",
+        fargate_service = aws_ecs_patterns.QueueProcessingFargateService(self, "Service",
             cluster = cluster,
             memory_limit_mib = 512,
             cpu = 256,
@@ -74,3 +76,17 @@ class SQSStack(core.Stack):
 
         # add the Lambda IAM permission to send SQS messages
         msg_queue.grant_send_messages(sqs_lambda)
+
+        # add XRay permissions to Fargate task
+        xray_policy = PolicyStatement(
+            resources = ["*"],
+            actions = ["xray:GetGroup",
+                     "xray:GetGroups",
+                     "xray:GetSampling*",
+                     "xray:GetTime*",
+                     "xray:GetService*",
+                     "xray:PutTelemetryRecords",
+                     "xray:PutTraceSegments"]
+        )
+
+        fargate_service.task_definition.add_to_task_role_policy(xray_policy)

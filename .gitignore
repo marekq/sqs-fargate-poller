@@ -1,3 +1,6 @@
+docker/dockerqueue
+*.upx
+
 *.swp
 package-lock.json
 __pycache__

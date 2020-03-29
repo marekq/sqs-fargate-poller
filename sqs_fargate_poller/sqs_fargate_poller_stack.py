@@ -17,10 +17,12 @@ class SQSStack(core.Stack):
         # build the docker image from local './docker/' directory
         container = aws_ecs.ContainerImage.from_asset(directory = 'docker')
 
-        # create a new VPC
+        # create a new VPC with the max amount of AZ's and one NAT gateway to reduce static infra cost
+        # TODO - include VPC SQS endpoint so the NAT gateway isn't needed anymore
         vpc = aws_ec2.Vpc(
             self, "Vpc",
-            max_azs = 10
+            max_azs = 10,
+            nat_gateways = 1
         )
 
         # create a new ECS cluster
@@ -42,8 +44,11 @@ class SQSStack(core.Stack):
             enable_logging = True,
             desired_task_count = 0,
             max_scaling_capacity = 3,
-            scaling_steps = [{"upper": 0, "change": -5}, {"lower": 1, "change": +1}, {"lower": 20000, "change": +2}],
-            queue = msg_queue
+            scaling_steps = [{"upper": 0, "change": -5}, {"lower": 1, "change": +1}, {"lower": 50000, "change": +2}],
+            queue = msg_queue,
+            environment = {
+                'sqs_queue_url': msg_queue.queue_url
+            }
         )
 
         # create a lambda function to generate load

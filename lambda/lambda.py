@@ -1,4 +1,8 @@
-import boto3, botocore, os, random, queue, threading
+import aws_xray_sdk, boto3, botocore, os, random, queue, threading
+from aws_xray_sdk.core import patch_all, xray_recorder
+
+# patch libraries for xray tracing
+patch_all()
 
 # configure total message count to send and  the amount of threads
 msgc	= int(os.environ['total_message_count'])
@@ -11,6 +15,7 @@ sqs     = boto3.client('sqs', config = botocore.client.Config(max_pool_connectio
 # set counter values
 count 	= 0
 fail 	= 0
+total 	= 0
 
 # create a queue
 q1     	= queue.Queue()
@@ -22,21 +27,32 @@ def worker():
 		send(q1.get())
 		q1.task_done()
 
+		global total
+		total += 1
+
+		# print sent count per 1000 messages for debugging purposes
+		if (total % 1000 == 0):
+			print("sent "+str(total)+" messages")
+
 
 # send a message, increase the success or failure counter
+@xray_recorder.capture("send_message")
 def send(x):
 	try:
 		sqs.send_message(QueueUrl = qurl, MessageBody = x)
 		global count
 		count += 1
+		xray_recorder.current_subsegment().put_annotation('success', str(x))
 
 	except Exception as e:
 		global fail
 		fail += 1
 		print('error in send(): '+str(e))
+		xray_recorder.current_subsegment().put_annotation('failed', str(x))
 
 
 # lambda handler
+@xray_recorder.capture("lambda_handler")
 def handler(event, context):
 	print('sending '+str(msgc)+' messages to '+qurl)
 

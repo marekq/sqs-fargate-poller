@@ -1,5 +1,6 @@
 docker/dockerqueue
 *.upx
+/layer/*
 
 *.swp
 package-lock.json

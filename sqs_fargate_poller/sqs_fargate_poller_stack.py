@@ -27,7 +27,15 @@ class SQSStack(core.Stack):
         vpc = aws_ec2.Vpc(
             self, "Vpc",
             max_azs = 10,
-            nat_gateways = 1
+            nat_gateways = 3,
+            subnet_configuration = [
+                aws_ec2.SubnetConfiguration(
+                    name = "private", cidr_mask = 24, subnet_type = aws_ec2.SubnetType.PRIVATE
+                ),
+                aws_ec2.SubnetConfiguration(
+                    name = "public", cidr_mask = 28, subnet_type = aws_ec2.SubnetType.PUBLIC
+                )
+            ]
         )
 
         # create a new ECS cluster
@@ -48,8 +56,8 @@ class SQSStack(core.Stack):
             image = sqscontainer,
             enable_logging = True,
             desired_task_count = 0,
-            max_scaling_capacity = 3,
-            scaling_steps = [{"upper": 0, "change": -5}, {"lower": 1, "change": +1}, {"lower": 50000, "change": +2}],
+            max_scaling_capacity = 5,
+            scaling_steps = [{"upper": 0, "change": +1}, {"lower": 1, "change": -5}, {"lower": 50000, "change": +2}, {"lower": 250000, "change": +4}],
             queue = msg_queue,
             environment = {
                 "sqs_queue_url": msg_queue.queue_url
@@ -69,11 +77,10 @@ class SQSStack(core.Stack):
         # create a lambda layer with xray
         # the cdk currently doesn"t support building based on requirements, so it"s added using pip or pip3
         if not os.path.isdir("./layer/python/aws_xray_sdk/"):
-            print("installing aws_xray_sdk using pip or pip3")
-            print("")
+            print("installing aws_xray_sdk using pip or pip3 \n")
             print("creating directory ./layer/python/aws_xray_sdk/")
 
-            # create the python layer directory
+            # create the python layer directory if required
             os.makedirs("./layer/python", exist_ok = True)
             cmd = "install aws_xray_sdk -t ./layer/python/ --upgrade"
 
@@ -86,7 +93,7 @@ class SQSStack(core.Stack):
 
             # exit if neither pip or pip3 can be found on the system
             else:
-                exit("error - pip or pip3 not found on system")
+                exit("error - pip or pip3 not found on system, check if these are available to your shell")
 
             print("downloaded aws_xray_sdk python package to "+os.getcwd()+"/layer/python/")
 

@@ -1,4 +1,4 @@
-import aws_xray_sdk, boto3, botocore, os, random, queue, threading
+import aws_xray_sdk, boto3, botocore, json, os, random, queue, threading
 from aws_xray_sdk.core import patch_all, xray_recorder
 
 # patch libraries for xray tracing
@@ -38,10 +38,21 @@ def worker():
 # send a message, increase the success or failure counter
 @xray_recorder.capture("send_message")
 def send(x):
+	msgs 	= []
+
 	try:
-		sqs.send_message(QueueUrl = qurl, MessageBody = x)
+		for z in range(10):
+			msg = {
+				'Id': str(z),
+				'MessageBody': json.dumps(x),
+				'DelaySeconds': 0
+			}
+			msgs.append(msg)
+
+		sqs.send_message_batch(QueueUrl = qurl, Entries = msgs)
+
 		global count
-		count += 1
+		count += 10
 		xray_recorder.current_subsegment().put_annotation('success', str(x))
 
 	except Exception as e:

@@ -57,7 +57,12 @@ class SQSStack(core.Stack):
             enable_logging = True,
             desired_task_count = 0,
             max_scaling_capacity = 5,
-            scaling_steps = [{"upper": 0, "change": +1}, {"lower": 1, "change": -5}, {"lower": 50000, "change": +2}, {"lower": 250000, "change": +4}],
+            scaling_steps = [
+                {"upper": 0, "change": -5}, 
+                {"lower": 1, "change": +1}, 
+                {"lower": 50000, "change": +2}, 
+                {"lower": 250000, "change": +4}
+            ],
             queue = msg_queue,
             environment = {
                 "sqs_queue_url": msg_queue.queue_url

@@ -1,5 +1,6 @@
 import aws_xray_sdk, boto3, botocore, json, os, random, queue, threading
 from aws_xray_sdk.core import patch_all, xray_recorder
+from aws_xray_sdk.core.lambda_launcher import LambdaContext
 
 # patch libraries for xray tracing
 patch_all()
@@ -57,7 +58,7 @@ def send(x):
 
 	except Exception as e:
 		global fail
-		fail += 1
+		fail += 10
 		print('error in send(): '+str(e))
 		xray_recorder.current_subsegment().put_annotation('failed', str(x))
 
@@ -65,6 +66,7 @@ def send(x):
 # lambda handler
 @xray_recorder.capture("lambda_handler")
 def handler(event, context):
+	xray_recorder.configure(context = LambdaContext(), context_missing = "LOG_ERROR")
 	print('sending '+str(msgc)+' messages to '+qurl)
 
 	# generate randomint messages and put them on the queue

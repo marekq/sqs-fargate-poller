@@ -117,8 +117,8 @@ class SQSStack(core.Stack):
             runtime = aws_lambda.Runtime.PYTHON_3_8,
             code = aws_lambda.Code.asset("lambda"),
             handler = "lambda.handler",
-            timeout = core.Duration.seconds(300),
-            memory_size = 512,
+            timeout = core.Duration.seconds(180),
+            memory_size = 1024,
             layers = [lambda_layer],
             tracing = aws_lambda.Tracing.ACTIVE,
             environment = {

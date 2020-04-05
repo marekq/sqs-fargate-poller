@@ -8,6 +8,12 @@ Deploy an SQS queue triggered Fargate container using the AWS CDK, which scales 
 ![alt text](./docs/diagram.svg)
 
 
+The Lambda function and Fargate container are instrumented with XRay, so that you can review operational metrics from the XRay Service Map.
+
+
+![alt text](./docs/xray.png)
+
+
 Motivation
 ----------
 

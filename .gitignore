@@ -1,4 +1,5 @@
 docker/dockerqueue
+docker/docker
 *.upx
 /layer/*
 

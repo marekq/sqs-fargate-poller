@@ -7,13 +7,13 @@ with open("README.md") as fp:
 
 setuptools.setup(
     name="sqs_fargate_poller",
-    version="0.2.0",
+    version="0.3.0",
 
     description="An empty CDK Python app",
     long_description=long_description,
     long_description_content_type="text/markdown",
 
-    author="author",
+    author="Marek Kuczynski, marekq@",
 
     package_dir={"": "sqs_fargate_poller"},
     packages=setuptools.find_packages(where="sqs_fargate_poller"),
@@ -31,10 +31,6 @@ setuptools.setup(
 
         "License :: OSI Approved :: Apache Software License",
 
-        "Programming Language :: JavaScript",
-        "Programming Language :: Python :: 3 :: Only",
-        "Programming Language :: Python :: 3.6",
-        "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: 3.8",
 
         "Topic :: Software Development :: Code Generators",

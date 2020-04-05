@@ -1,6 +1,5 @@
-import aws_xray_sdk, boto3, botocore, json, os, random, queue, threading
+import aws_xray_sdk, boto3, botocore, json, logging, os, random, queue, threading
 from aws_xray_sdk.core import patch_all, xray_recorder
-from aws_xray_sdk.core.lambda_launcher import LambdaContext
 
 # patch libraries for xray tracing
 patch_all()
@@ -29,10 +28,10 @@ def worker():
 		q1.task_done()
 
 		global total
-		total += 1
+		total += 10
 
-		# print sent count per 1000 messages for debugging purposes
-		if (total % 1000 == 0):
+		# print sent count per 10000 messages for debugging purposes
+		if (total % 10000 == 0):
 			print("sent "+str(total)+" messages")
 
 
@@ -42,6 +41,7 @@ def send(x):
 	msgs 	= []
 
 	try:
+		# generate 10 random messages 
 		for z in range(10):
 			msg = {
 				'Id': str(z),
@@ -50,36 +50,47 @@ def send(x):
 			}
 			msgs.append(msg)
 
+		# send the batch of messages to SQS
 		sqs.send_message_batch(QueueUrl = qurl, Entries = msgs)
-
 		global count
 		count += 10
-		xray_recorder.current_subsegment().put_annotation('success', str(x))
 
+	# print the error in case the message cannot be sent succesfully
 	except Exception as e:
 		global fail
 		fail += 10
 		print('error in send(): '+str(e))
-		xray_recorder.current_subsegment().put_annotation('failed', str(x))
 
 
 # lambda handler
-@xray_recorder.capture("lambda_handler")
 def handler(event, context):
-	xray_recorder.configure(context = LambdaContext(), context_missing = "LOG_ERROR")
+	logging.basicConfig(level = 'DEBUG')
+	logging.getLogger('aws_xray_sdk').setLevel(logging.WARNING)
+	xray_recorder.configure(context_missing = "RUNTIME_ERROR")
+
+	xray_recorder.begin_subsegment('start_lambda')
 	print('sending '+str(msgc)+' messages to '+qurl)
 
 	# generate randomint messages and put them on the queue
-	for x in range(int(msgc)):
+	for x in range(int(msgc / 10)):
 		q1.put(str(random.randint(1000, 9999)))
 
+	xray_recorder.end_subsegment()
+
 	# start the processing threads
+	xray_recorder.begin_subsegment('running_threads')
+
 	for x in range(int(thrc)):
 		t = threading.Thread(target = worker)
 		t.daemon = True
 		t.start()
 	q1.join()
 
+	xray_recorder.end_subsegment()
+
 	# print how many messages were sent and exit
+	xray_recorder.begin_subsegment('print_results')
+
 	print('sucessfully sent '+str(count)+' messages')
 	print('failed to send '+str(fail)+' messages')
+	xray_recorder.end_subsegment()

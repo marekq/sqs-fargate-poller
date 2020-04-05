@@ -118,12 +118,13 @@ class SQSStack(core.Stack):
             code = aws_lambda.Code.asset("lambda"),
             handler = "lambda.handler",
             timeout = core.Duration.seconds(180),
-            memory_size = 1024,
+            memory_size = 512,
+			retry_attempts = 0,
             layers = [lambda_layer],
             tracing = aws_lambda.Tracing.ACTIVE,
             environment = {
                 "sqs_queue_url": msg_queue.queue_url,
-                "total_message_count": "10000",
+                "total_message_count": "250",
                 "python_worker_threads" : "50"
             }
         )
@@ -151,3 +152,4 @@ class SQSStack(core.Stack):
         )
 
         fargate_service.task_definition.add_to_task_role_policy(xray_policy)
+        sqs_lambda.add_to_role_policy(xray_policy)

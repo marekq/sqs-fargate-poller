@@ -8,9 +8,8 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/sqs"
-	_ "github.com/aws/aws-xray-sdk-go/plugins/ecs"
+	"github.com/aws/aws-xray-sdk-go/awsplugins/ecs"
 	"github.com/aws/aws-xray-sdk-go/xray"
-	"github.com/aws/aws-xray-sdk-go/xraylog"
 )
 
 // set the poll timeout value in seconds and the SQS queue URL
@@ -21,79 +20,65 @@ var (
 )
 
 func init() {
-	xray.SetLogger(xraylog.NewDefaultLogger(os.Stdout, xraylog.LogLevelInfo))
-	xray.Configure(xray.Config{})
 	os.Setenv("AWS_XRAY_CONTEXT_MISSING", "LOG_ERROR")
-}
+	ecs.Init()
 
-// retrieve a message from SQS
-func pollmsg(svc *sqs.SQS) {
-	ctx := context.Background()
-	ctx, seg := xray.BeginSegment(ctx, "pollmsg")
-	defer seg.Close(nil)
-
-	result, _ := svc.ReceiveMessage(&sqs.ReceiveMessageInput{
-		QueueUrl:              aws.String(sqsURL),
-		MaxNumberOfMessages:   aws.Int64(1),
-		MessageAttributeNames: aws.StringSlice([]string{"All"}),
-		WaitTimeSeconds:       polltimeout,
-	})
-
-	// check if the response contains messages
-	if result.Messages != nil {
-		msghandler := result.Messages[0].ReceiptHandle
-
-		fmt.Println(result.Messages)
-		xray.AddMetadata(ctx, "MsgReceived", result.Messages)
-
-		// print the message and delete it from queue
-		_, err := svc.DeleteMessage(&sqs.DeleteMessageInput{
-			QueueUrl:      aws.String(sqsURL),
-			ReceiptHandle: msghandler,
-		})
-
-		// print error if the message can't be deleted
-		if err != nil {
-			fmt.Println("message not deleted")
-			xray.AddMetadata(ctx, "MsgDeleteFail", msghandler)
-		} else {
-			xray.AddMetadata(ctx, "MsgDeleteSuccess", msghandler)
-		}
-
-	} else {
-		xray.AddMetadata(ctx, "MsgGetFailed", "message")
-	}
-}
-
-// connect to SQS and run an infinite loop on pollers
-//func handler(ctx context.Context) error {
-func handler() {
 	xray.Configure(xray.Config{
 		DaemonAddr:     "127.0.0.1:2000",
 		ServiceVersion: "1.2.3",
-		LogLevel:       "debug",
+		LogLevel:       "trace",
 	})
+}
 
-	xray.SetLogger(xraylog.NewDefaultLogger(os.Stderr, xraylog.LogLevelError))
+// connect to SQS and run an infinite loop on pollers
+func main() {
+	// print message queue url
+	fmt.Println(" sqsName" + sqsName + "\n sqsURL " + sqsURL)
 
+	// open a new session
 	sess := session.Must(session.NewSessionWithOptions(session.Options{
 		SharedConfigState: session.SharedConfigEnable,
 	}))
 
-	// start new session and instrument with XRay
+	// connect to sqs
 	svc := sqs.New(sess)
-
-	// print message queue url
-	fmt.Println(" sqsName" + sqsName + "\n sqsURL " + sqsURL)
+	xray.AWS(svc.Client)
+	c := 0
 
 	// start infinite loop to poll queue
 	for {
-		pollmsg(svc)
+		ctx, Seg := xray.BeginSegment(context.Background(), "sqs")
+		_, SubSeg := xray.BeginSubsegment(ctx, "subsegment-name")
+
+		xray.Capture(ctx, "ReceiveMsg", func(ctx1 context.Context) error {
+			result, _ := svc.ReceiveMessageWithContext(ctx, &sqs.ReceiveMessageInput{
+				QueueUrl:              aws.String(sqsURL),
+				MaxNumberOfMessages:   aws.Int64(1),
+				MessageAttributeNames: aws.StringSlice([]string{"All"}),
+				WaitTimeSeconds:       polltimeout,
+			})
+
+			if len(result.Messages) > 0 {
+				msghandler := result.Messages[0].ReceiptHandle
+				body := result.Messages[0].Body
+
+				svc.DeleteMessageWithContext(ctx, &sqs.DeleteMessageInput{
+					QueueUrl:      aws.String(sqsURL),
+					ReceiptHandle: msghandler,
+				})
+				fmt.Println("received and deleting " + *body)
+				xray.AddMetadata(ctx, "SuccessMsg", "0")
+			} else {
+				xray.AddMetadata(ctx, "FailMsg", "0")
+			}
+
+			return nil
+		})
+
+		SubSeg.Close(nil)
+		Seg.Close(nil)
+
+		c += 1
+		fmt.Println(c)
 	}
-
-}
-
-func main() {
-	fmt.Println("starting container")
-	handler()
 }

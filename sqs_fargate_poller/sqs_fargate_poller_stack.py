@@ -1,4 +1,5 @@
-import os, shutil
+import os, shutil, sys, subprocess
+
 from aws_cdk import (
     core,
     aws_ec2,
@@ -9,6 +10,7 @@ from aws_cdk import (
     aws_events,
     aws_events_targets
 )
+
 from aws_cdk.aws_iam import PolicyStatement
 
 class SQSStack(core.Stack):
@@ -76,65 +78,75 @@ class SQSStack(core.Stack):
             logging = fargate_service.log_driver
         )
 
-        # expose the sidecar on local port 2000
+        # expose the sidecar on port UDP/2000
         xray_sidecar.add_port_mappings(aws_ecs.PortMapping(container_port = 2000, protocol = aws_ecs.Protocol.UDP))
 
-        # create a lambda layer with xray
-        # the cdk currently doesn"t support building based on requirements, so it"s added using pip or pip3
-        if not os.path.isdir("./layer/python/aws_xray_sdk/"):
-            print("installing aws_xray_sdk using pip or pip3 \n")
-            print("creating directory ./layer/python/aws_xray_sdk/")
+        # build the go binary for the lambda SQS generator
+        # since CDK cannot natively build Go binaries yet, we need to do this manually
+        src_file    = './loadgen/loadgensqs.go'
+        src_md5     = subprocess.check_output(['md5', '-q', src_file])
 
-            # create the python layer directory if required
-            os.makedirs("./layer/python", exist_ok = True)
-            cmd = "install aws_xray_sdk -t ./layer/python/ --upgrade"
+        build_file    = './loadgen/tempbuilddir/tmp.go'
+        build_md5     = subprocess.check_output(['md5', '-q', build_file])
 
-            # check if pip3 or pip is present on the system, else raise an exit
-            if shutil.which("pip3"):
-                os.system("pip3 "+cmd)
-                
-            elif shutil.which("pip"):
-                os.system("pip "+cmd)
+        # check if the md5's of go source code are different
+        if src_md5 != build_md5:
 
-            # exit if neither pip or pip3 can be found on the system
-            else:
-                exit("error - pip or pip3 not found on system, check if these are available to your shell")
+            print("\ndifferent files detected : \n" + src_file + " " + str(src_md5) + "\n" + build_file + " " + str(build_md5)+"\n")
+            print('\nbuilding go binary from ' + src_file +' as it changed since last cdk deploy...\n')
+            
+            # copy the source file from ./loadgen to the local directory
+            os.system("cp " + src_file + " .")
 
-            print("downloaded aws_xray_sdk python package to "+os.getcwd()+"/layer/python/")
+            # build the go binary in root and copy it to the ./bin directory
+            build = os.system('GOARCH=amd64 GOOS=linux go build -o loadgensqs loadgensqs.go')
+            
+            # if build didn't exit cleanly, there likely was an issue with the go build and a break is returned
+            if build != 0:
+                sys.exit()
 
-        else:
-            print("skipping python aws_xray_sdk build")
+            # if upx is installed, compress the binary to reduce size
+            if shutil.which('upx'):
+                print('\ncompressing go binary with upx...\n')
+                os.system('upx -9 loadgensqs && chmod +x loadgensqs')
 
-        # create the lambda layer with
-        lambda_layer = aws_lambda.LayerVersion(self, "aws_xray_sdk",
-            code = aws_lambda.AssetCode("layer"),
-            compatible_runtimes = [aws_lambda.Runtime.PYTHON_3_8],
-            layer_version_name = "aws_xray_sdk"
-        )
+            # create a zip file for the lambda go deployment
+            print('\ncreate zip file for lambda deployment and move to ./loadgen dir\n')
+            os.system('zip -r9 lambda.zip loadgensqs')
+            os.system('mv lambda.zip ./loadgen')
 
+            # move the loadgensqs binary and go source code to ./tempbuilddir for caching
+            os.system('mv loadgensqs ./tempbuilddir')
+            os.system('mv loadgensqs.go ./tempbuilddir')
+            
         # create a lambda function to generate load
         sqs_lambda = aws_lambda.Function(self, "GenerateLoadSQS",
-            runtime = aws_lambda.Runtime.PYTHON_3_8,
-            code = aws_lambda.Code.asset("lambda"),
-            handler = "lambda.handler",
-            timeout = core.Duration.seconds(180),
-            memory_size = 512,
+            runtime = aws_lambda.Runtime.GO_1_X,
+            code = aws_lambda.Code.asset("./loadgen/lambda.zip"),
+            handler = "loadgensqs",
+            timeout = core.Duration.seconds(10),
+            memory_size = 256,
 			retry_attempts = 0,
-            layers = [lambda_layer],
             tracing = aws_lambda.Tracing.ACTIVE,
             environment = {
                 "sqs_queue_url": msg_queue.queue_url,
-                "total_message_count": "250",
-                "python_worker_threads" : "50"
+                "total_message_count": "100"
             }
         )
         
         # create a new cloudwatch rule running every hour to trigger the lambda function
-        eventRule = aws_events.Rule(self, "lambda-generator-hourly-rule",
-            enabled = True,
-            schedule = aws_events.Schedule.cron(minute = "0"))
+        eventRuleHour   = aws_events.Rule(self, "lambda-generator-hourly-rule",
+            enabled     = True,
+            schedule    = aws_events.Schedule.cron(minute = "0"))
 
-        eventRule.add_target(aws_events_targets.LambdaFunction(sqs_lambda))
+        eventRuleHour.add_target(aws_events_targets.LambdaFunction(sqs_lambda))
+
+        # create a new cloudwatch rule running every minute to trigger the lambda function
+        eventRuleMinu   = aws_events.Rule(self, "lambda-generator-minute-rule",
+            enabled     = True,
+            schedule    = aws_events.Schedule.cron(minute = "*"))
+
+        eventRuleMinu.add_target(aws_events_targets.LambdaFunction(sqs_lambda))
 
         # add the Lambda IAM permission to send SQS messages
         msg_queue.grant_send_messages(sqs_lambda)
@@ -152,4 +164,4 @@ class SQSStack(core.Stack):
         )
 
         fargate_service.task_definition.add_to_task_role_policy(xray_policy)
-        sqs_lambda.add_to_role_policy(xray_policy)
+        #sqs_lambda.add_to_role_policy(xray_policy)

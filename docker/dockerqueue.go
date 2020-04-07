@@ -78,7 +78,7 @@ func main() {
 		SubSeg.Close(nil)
 		Seg.Close(nil)
 
-		c += 1
+		c++
 		fmt.Println(c)
 	}
 }

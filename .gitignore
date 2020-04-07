@@ -1,5 +1,10 @@
 *.upx
 /layer/*
+loadgen/lambda.zip
+loadgen/loadgen
+loadgen/tempbuilddir/loadgensqs
+loadgen/tempbuilddir/loadgensqs.go
+*DS_Store
 
 *.swp
 package-lock.json

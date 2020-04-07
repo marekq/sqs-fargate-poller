@@ -26,11 +26,10 @@ While Lambda functions are great for event driven tasks from a cost and maintena
 
  Fargate with ECS deployed through CDK offers an alternative for these cases for the following reasons;
 
- - Fargate clusters and VPC's are free of charge, which means you do not have a fixed cost for running the solution. 
- - All the components also don't require any ongoing maintenance or active monitoring to run. 
- - You can import any Docker container into the solution and customize the amount of memory and CPU that it requires. 
+ - Fargate clusters and VPC's are free of charge, which means you do not have a fixed cost for running the solution. You only pay for the runtime of the Lambda function and the Fargate container, plus some costs for XRay, CloudWatch and SQS usage. 
+ - All the components also don't require any ongoing maintenance or active monitoring to run. In case your stack breaks, you can easily revert to an older version of the stack of the CDK. 
+ - You can import any Docker container into the solution and customize the amount of memory and CPU that it requires. The process to do this easier will be documented and automated properly in the future.  
  - All AWS resources, the Docker container and Lambda function can easily be deployed using the CDK. You can also make changes to the code on your machine and push it to AWS using 'cdk deploy'. 
-
 
 
 Installation
@@ -48,6 +47,7 @@ Roadmap
 - [ ] Change alarm metric monitoring rate from every 5 minutes to every minute, so that Fargate scales more accurately depending on the amount of messages on the queue. 
 - [ ] Add a simple process to add your own containers with the XRay and SQS instrumentation present. 
 - [ ] Improve the amount of traces and segments that are captured through XRay. Currently all messages are captured in an inefficient way which can be costly at scale and may be over the XRay message limit of 64 KB per trace.
+- [ ] Build the Lambda Go binary natively through the CDK once this becomes available. As an alternative, a build process in Docker can also be automated so no local tools need to be installed. 
 - [X] Rewrite SQS generation Lambda to Golang (once CDK properly supports this or using a workaround to run 'go build').
 - [X] Ensure tracing SQS messages end to end works well with XRay. Right now the messages aren't properly traced and visualized and show up as separate components on the XRay Service Map.
 

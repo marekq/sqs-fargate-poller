@@ -99,25 +99,34 @@ class SQSStack(core.Stack):
             os.system("cp " + src_file + " .")
 
             # build the go binary in root and copy it to the ./bin directory
+            os.system('go get -d -v .')
             build = os.system('GOARCH=amd64 GOOS=linux go build -o loadgensqs loadgensqs.go')
             
+            print('build '+str(build), type(build))
+
             # if build didn't exit cleanly, there likely was an issue with the go build and a break is returned
-            if build != 0:
-                sys.exit()
+            if build == 0:
 
-            # if upx is installed, compress the binary to reduce size
-            if shutil.which('upx'):
-                print('\ncompressing go binary with upx...\n')
-                os.system('upx -9 loadgensqs && chmod +x loadgensqs')
+                # if upx is installed, compress the binary to reduce size
+                if shutil.which('upx'):
+                    print('\ncompressing go binary with upx...\n')
+                    os.system('upx -9 loadgensqs && chmod +x loadgensqs')
 
-            # create a zip file for the lambda go deployment
-            print('\ncreate zip file for lambda deployment and move to ./loadgen dir\n')
-            os.system('zip -r9 lambda.zip loadgensqs')
-            os.system('mv lambda.zip ./loadgen')
+                # create a zip file for the lambda go deployment
+                print('\ncreate zip file for lambda deployment and move to ./loadgen dir\n')
+                os.system('zip -r9 lambda.zip loadgensqs')
+                os.system('mv lambda.zip ./loadgen/')
 
-            # move the loadgensqs binary and go source code to ./tempbuilddir for caching
-            os.system('mv loadgensqs ./tempbuilddir')
-            os.system('mv loadgensqs.go ./tempbuilddir')
+                # move the loadgensqs binary and go source code to ./tempbuilddir for caching
+                os.system('mv loadgensqs ./loadgen/tempbuilddir/')
+                os.system('mv loadgensqs.go ./loadgen/tempbuilddir/')
+            
+            else:
+                print('\nfound error in go source code, please see build error above\n')
+
+                # remove go source code from root dir
+                os.system('rm ./loadgensqs.go')
+                raise SystemExit
             
         # create a lambda function to generate load
         sqs_lambda = aws_lambda.Function(self, "GenerateLoadSQS",

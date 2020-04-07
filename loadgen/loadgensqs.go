@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"math/rand"
 	"os"
 	"strconv"
@@ -28,9 +27,6 @@ func handler(ctx context.Context) {
 	b := os.Getenv("total_message_count")
 	c, _ := strconv.Atoi(b)
 
-	// run goroutines in groups of 10
-	d := 10
-
 	// setup session
 	fmt.Println("sending messages to " + q)
 
@@ -42,49 +38,53 @@ func handler(ctx context.Context) {
 	svc := sqs.New(sess)
 	xray.AWS(svc.Client)
 
-	// keep track of total sent messages
-	tot := 0
-
 	// run for every message group
-	for a := 0; a < (c / 10); a++ {
+	for tot := 0; tot < (c / 10); tot++ {
 
-		// spawn go routines depending on total count
-		for b := 0; b < d; b++ {
+		// retrieve context for xray and start subsegment for xray
+		_, Seg := xray.BeginSubsegment(ctx, "sqs")
 
-			// retrieve context for xray and start subsegment for xray
-			_, Seg := xray.BeginSubsegment(ctx, "sqs")
+		// send the message to the sqs queue
+		xray.Capture(ctx, "SendMsgBatch", func(ctx1 context.Context) error {
+			entries := []*sqs.SendMessageBatchRequestEntry{}
 
-			// generate a random number
-			ri := strconv.Itoa(rand.Intn(9999))
+			// generate 10 random message enrtries
+			for i := 0; i < 10; i++ {
 
-			// send the message to the sqs queue
-			xray.Capture(ctx, "SendMsg", func(ctx1 context.Context) error {
-				_, err := svc.SendMessageWithContext(ctx, &sqs.SendMessageInput{
+				// generate a random number
+				ri := strconv.Itoa(rand.Intn(9999))
+
+				// create the batch message request
+				entry := sqs.SendMessageBatchRequestEntry{
+					Id:          aws.String(strconv.Itoa(i)),
 					MessageBody: aws.String(ri),
-					QueueUrl:    aws.String(q)})
-
-				// print error if it occurs
-				if err != nil {
-					log.Println(err)
 				}
-				xray.AddMetadata(ctx, "SentMessages", "10")
+				entries = append(entries, &entry)
+			}
 
-				return nil
+			// send the batch message request
+			_, err := svc.SendMessageBatchWithContext(ctx, &sqs.SendMessageBatchInput{
+				Entries:  entries,
+				QueueUrl: aws.String(q),
 			})
 
-			// increase total count
-			tot++
+			// print an error if sending failed
+			if err != nil {
+				fmt.Println(err)
+			}
 
-			// print log line
-			log.Println(strconv.Itoa(tot) + " " + ri)
+			xray.AddMetadata(ctx, "SentMessages", "10")
 
-			// close xray segments
-			Seg.Close(nil)
-		}
+			return nil
+		})
+
+		// print total messages completed
+		fmt.Println("sent " + strconv.Itoa((tot*10)+10) + " messages")
+
+		// close xray segments
+		Seg.Close(nil)
 	}
 
-	// print total messages completed
-	fmt.Println("sent " + strconv.Itoa(tot) + " messages")
 }
 
 // start lambda handler

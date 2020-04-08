@@ -68,6 +68,7 @@ func main() {
 				})
 				fmt.Println("received and deleting " + *body)
 				xray.AddMetadata(ctx, "SuccessMsg", "0")
+
 			} else {
 				xray.AddMetadata(ctx, "FailMsg", "0")
 			}

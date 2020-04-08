@@ -58,12 +58,14 @@ class SQSStack(core.Stack):
             image = sqscontainer,
             enable_logging = True,
             desired_task_count = 0,
-            max_scaling_capacity = 5,
+            max_scaling_capacity = 10,
             scaling_steps = [
                 {"upper": 0, "change": -5}, 
-                {"lower": 1, "change": +1}, 
-                {"lower": 50000, "change": +2}, 
-                {"lower": 250000, "change": +4}
+                {"lower": 1, "change": +1}
+                # disabled metric based scaling to test scaling on cpu usage only
+                # this may potentially lower cost as fargate will scale in smaller steps
+                #{"lower": 50000, "change": +2}, 
+                #{"lower": 250000, "change": +4}
             ],
             queue = msg_queue,
             environment = {
@@ -92,42 +94,26 @@ class SQSStack(core.Stack):
         # check if the md5's of go source code are different
         if src_md5 != build_md5:
 
-            print("\ndifferent files detected : \n" + src_file + " " + str(src_md5) + "\n" + build_file + " " + str(build_md5)+"\n")
-            print('\nbuilding go binary from ' + src_file +' as it changed since last cdk deploy...\n')
+            print("\ndifferent file content detected between:")
+            print("\n - " + str(src_md5) + " " + src_file)
+            print("\n - " + str(build_md5)+ " " + build_file + "\n")
+            print("\nbuilding go binary in Docker container from " + src_file + "\n")
             
-            # copy the source file from ./loadgen to the local directory
-            os.system("cp " + src_file + " .")
+            # run the docker image build using the local Dockerfile
+            os.system("cd loadgen/ && DOCKER_BUILDKIT=1 docker image build -f Dockerfile -t generateloadsqslambda . ")
 
-            # build the go binary in root and copy it to the ./bin directory
-            os.system('go get -d -v .')
-            build = os.system('GOARCH=amd64 GOOS=linux go build -o loadgensqs loadgensqs.go')
-            
-            print('build '+str(build), type(build))
+            # get the docker image id
+            docker_id = os.system("docker images | grep generateloadsqslambda | awk {'print $3'}")
 
-            # if build didn't exit cleanly, there likely was an issue with the go build and a break is returned
-            if build == 0:
+            print("\nbuilt container with id " + str(docker_id))
+            print("\ncopying lambda.zip from container to ./loadgen/lambda.zip")
 
-                # if upx is installed, compress the binary to reduce size
-                if shutil.which('upx'):
-                    print('\ncompressing go binary with upx...\n')
-                    os.system('upx -9 loadgensqs && chmod +x loadgensqs')
+            # copy the go binary from the container to the ./loadgen directory
+            os.system("docker cp " + str(docker_id) + ":/tmp/lambda.zip ./loadgen/lambda.zip")
 
-                # create a zip file for the lambda go deployment
-                print('\ncreate zip file for lambda deployment and move to ./loadgen dir\n')
-                os.system('zip -r9 lambda.zip loadgensqs')
-                os.system('mv lambda.zip ./loadgen/')
+            # copy the current go source code to the cache folder
+            os.system("cp "+ src_file + " " + build_file)
 
-                # move the loadgensqs binary and go source code to ./tempbuilddir for caching
-                os.system('mv loadgensqs ./loadgen/tempbuilddir/')
-                os.system('mv loadgensqs.go ./loadgen/tempbuilddir/')
-            
-            else:
-                print('\nfound error in go source code, please see build error above\n')
-
-                # remove go source code from root dir
-                os.system('rm ./loadgensqs.go')
-                raise SystemExit
-            
         # create a lambda function to generate load
         sqs_lambda = aws_lambda.Function(self, "GenerateLoadSQS",
             runtime = aws_lambda.Runtime.GO_1_X,

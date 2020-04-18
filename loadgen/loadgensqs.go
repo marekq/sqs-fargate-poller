@@ -17,7 +17,7 @@ import (
 // main handler
 func handler(ctx context.Context) {
 
-	// add xray tracing debug info
+	// add xray debug info
 	os.Setenv("AWS_XRAY_CONTEXT_MISSING", "LOG_ERROR")
 
 	// retrieve sqs queue url from lambda variable
@@ -29,52 +29,35 @@ func handler(ctx context.Context) {
 	// convert string to int
 	msgc, _ := strconv.Atoi(mc)
 
-	// divide the user submitted message count by 10 as SendMessageBatch is used
-	msgcdiv := msgc / 10
-
-	// print message with total amount of messages and queue url
-	fmt.Println("sending " + strconv.Itoa(msgcdiv) + " messages to " + urlqueue)
+	// print message with to be sent amount of messages and sqs queue url
+	fmt.Println("start sending " + mc + " messages to " + urlqueue)
 
 	// setup a session
 	sess := session.Must(session.NewSessionWithOptions(session.Options{
 		SharedConfigState: session.SharedConfigEnable,
 	}))
 
-	// create a session with sqs, instrumented with xray
+	// create a session with sqs and instrument it with xray tracing
 	svc := sqs.New(sess)
 	xray.AWS(svc.Client)
 
-	// run for every message group,
-	for tot := 0; tot < (msgcdiv); tot++ {
+	// create trace for every message group
+	for tot := 0; tot < (msgc); tot++ {
 
-		// retrieve context for xray and start subsegment for xray
+		// retrieve context for xray and start subsegment
 		_, Seg := xray.BeginSubsegment(ctx, "sqs")
 
 		// send the message to the sqs queue
-		xray.Capture(ctx, "SendMsgBatch", func(ctx1 context.Context) error {
-			entries := []*sqs.SendMessageBatchRequestEntry{}
+		xray.Capture(ctx, "SendMsg", func(ctx1 context.Context) error {
+			ri := strconv.Itoa(rand.Intn(999))
 
-			// generate 10 random message enrtries
-			for i := 0; i == 10; i++ {
-
-				// generate a random number of four digits
-				msg := strconv.Itoa(rand.Intn(9999))
-
-				// create the batch message request
-				entry := sqs.SendMessageBatchRequestEntry{
-					Id:          aws.String(strconv.Itoa(i)),
-					MessageBody: aws.String(msg),
-				}
-				entries = append(entries, &entry)
-			}
-
-			// send the batch message request
-			_, err := svc.SendMessageBatchWithContext(ctx, &sqs.SendMessageBatchInput{
-				Entries:  entries,
-				QueueUrl: aws.String(urlqueue),
+			// send one message
+			_, err := svc.SendMessageWithContext(ctx, &sqs.SendMessageInput{
+				MessageBody: aws.String(ri),
+				QueueUrl:    aws.String(urlqueue),
 			})
 
-			// print an error if sending of messages failed
+			// print an error if message sending failed
 			if err != nil {
 				fmt.Println(err)
 			}
@@ -83,9 +66,9 @@ func handler(ctx context.Context) {
 		})
 
 		// print total messages completed
-		fmt.Println("sent " + strconv.Itoa((tot * 10)) + " messages")
+		fmt.Println("sent " + strconv.Itoa(tot) + " messages to queue")
 
-		// close xray segments
+		// close xray subsegments
 		Seg.Close(nil)
 	}
 }

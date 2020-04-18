@@ -18,8 +18,8 @@ class SQSStack(core.Stack):
     def __init__(self, scope: core.Construct, id: str, **kwargs) -> None:
         super().__init__(scope, id, **kwargs)
 
-        # build the docker image from local "./docker/" directory
-        sqscontainer = aws_ecs.ContainerImage.from_asset(directory = "docker")
+        # build the docker image from local "./docker" directory
+        sqscontainer = aws_ecs.ContainerImage.from_asset(directory = "docker/")
 
         # add the aws-xray-daemon as a sidecar running on UDP/2000
         xraycontainer = aws_ecs.ContainerImage.from_registry("amazon/aws-xray-daemon")
@@ -83,44 +83,18 @@ class SQSStack(core.Stack):
         # expose the sidecar on port UDP/2000
         xray_sidecar.add_port_mappings(aws_ecs.PortMapping(container_port = 2000, protocol = aws_ecs.Protocol.UDP))
 
-        # build the go binary for the lambda SQS generator
-        # since CDK cannot natively build Go binaries yet, we need to do this manually
-        src_file    = './loadgen/loadgensqs.go'
-        src_md5     = subprocess.check_output(['md5', '-q', src_file])
+        # build the go binary for the lambda SQS generator and retrieve the unix timestamp of when the file was modified
+        # since CDK cannot natively build Go binaries yet, we need to do this manually through build_lambda_zip.py
+        os.system("python loadgen/build_lambda_zip.py")
+        filets = str(int(os.path.getctime("./loadgen/lambda.zip")))
 
-        build_file    = './loadgen/tempbuilddir/tmp.go'
-        build_md5     = subprocess.check_output(['md5', '-q', build_file])
-
-        # check if the md5's of go source code are different
-        if src_md5 != build_md5:
-
-            print("\ndifferent file content detected between:")
-            print("\n - " + str(src_md5) + " " + src_file)
-            print("\n - " + str(build_md5)+ " " + build_file + "\n")
-            print("\nbuilding go binary in Docker container from " + src_file + "\n")
-            
-            # run the docker image build using the local Dockerfile
-            os.system("cd loadgen/ && DOCKER_BUILDKIT=1 docker image build -f Dockerfile -t generateloadsqslambda . ")
-
-            # get the docker image id
-            docker_id = os.system("docker images | grep generateloadsqslambda | awk {'print $3'}")
-
-            print("\nbuilt container with id " + str(docker_id))
-            print("\ncopying lambda.zip from container to ./loadgen/lambda.zip")
-
-            # copy the go binary from the container to the ./loadgen directory
-            os.system("docker cp " + str(docker_id) + ":/tmp/lambda.zip ./loadgen/lambda.zip")
-
-            # copy the current go source code to the cache folder
-            os.system("cp "+ src_file + " " + build_file)
-
-        # create a lambda function to generate load
+        # create a lambda function to generate load, using the filets value as a source hash for the zip
         sqs_lambda = aws_lambda.Function(self, "GenerateLoadSQS",
             runtime = aws_lambda.Runtime.GO_1_X,
-            code = aws_lambda.Code.asset("./loadgen/lambda.zip"),
+            code = aws_lambda.Code.from_asset("./loadgen/lambda.zip", source_hash = filets),
             handler = "loadgensqs",
-            timeout = core.Duration.seconds(10),
-            memory_size = 256,
+            timeout = core.Duration.seconds(20),
+            memory_size = 128,
 			retry_attempts = 0,
             tracing = aws_lambda.Tracing.ACTIVE,
             environment = {
@@ -137,16 +111,18 @@ class SQSStack(core.Stack):
         eventRuleHour.add_target(aws_events_targets.LambdaFunction(sqs_lambda))
 
         # create a new cloudwatch rule running every minute to trigger the lambda function
+        '''
         eventRuleMinu   = aws_events.Rule(self, "lambda-generator-minute-rule",
             enabled     = True,
             schedule    = aws_events.Schedule.cron(minute = "*"))
 
         eventRuleMinu.add_target(aws_events_targets.LambdaFunction(sqs_lambda))
+        '''
 
         # add the Lambda IAM permission to send SQS messages
         msg_queue.grant_send_messages(sqs_lambda)
 
-        # add XRay permissions to Fargate task
+        # add XRay permissions to Fargate task and Lambda
         xray_policy = PolicyStatement(
             resources = ["*"],
             actions = ["xray:GetGroup",
@@ -159,4 +135,4 @@ class SQSStack(core.Stack):
         )
 
         fargate_service.task_definition.add_to_task_role_policy(xray_policy)
-        #sqs_lambda.add_to_role_policy(xray_policy)
+        sqs_lambda.add_to_role_policy(xray_policy)

@@ -4,6 +4,7 @@ loadgen/lambda.zip
 loadgen/loadgen
 loadgen/tempbuilddir/loadgensqs
 loadgen/tempbuilddir/loadgensqs.go
+loadgen/tempbuilddir/tmp.go
 *DS_Store
 
 *.swp

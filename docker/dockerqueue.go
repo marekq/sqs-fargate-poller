@@ -4,11 +4,11 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/sqs"
-	"github.com/aws/aws-xray-sdk-go/awsplugins/ecs"
 	"github.com/aws/aws-xray-sdk-go/xray"
 )
 
@@ -16,24 +16,23 @@ import (
 var (
 	polltimeout = aws.Int64(20)
 	sqsURL      = os.Getenv("sqs_queue_url")
-	sqsName     = os.Getenv("SQS_NAME")
 )
 
-func init() {
-	os.Setenv("AWS_XRAY_CONTEXT_MISSING", "LOG_ERROR")
-	ecs.Init()
+// connect to SQS and run an infinite loop on pollers
+func main() {
+
+	//ecs.Init()
 
 	xray.Configure(xray.Config{
 		DaemonAddr:     "127.0.0.1:2000",
 		ServiceVersion: "1.2.3",
 		LogLevel:       "trace",
 	})
-}
 
-// connect to SQS and run an infinite loop on pollers
-func main() {
+	os.Setenv("AWS_XRAY_CONTEXT_MISSING", "LOG_ERROR")
+
 	// print message queue url
-	fmt.Println(" sqsName" + sqsName + "\n sqsURL " + sqsURL)
+	fmt.Println("sqsURL " + sqsURL)
 
 	// open a new session
 	sess := session.Must(session.NewSessionWithOptions(session.Options{
@@ -47,9 +46,16 @@ func main() {
 
 	// start infinite loop to poll queue
 	for {
-		ctx, Seg := xray.BeginSegment(context.Background(), "sqs")
-		_, SubSeg := xray.BeginSubsegment(ctx, "subsegment-name")
 
+		// create an xray segement
+		ctx, Seg := xray.BeginSegment(context.Background(), "sqs")
+		_, SubSeg := xray.BeginSubsegment(ctx, "subseg")
+
+		defer SubSeg.Close(nil)
+		defer Seg.Close(nil)
+		ctx := context.Background()
+
+		// capture the receive message request with xray
 		xray.Capture(ctx, "ReceiveMsg", func(ctx1 context.Context) error {
 			result, _ := svc.ReceiveMessageWithContext(ctx, &sqs.ReceiveMessageInput{
 				QueueUrl:              aws.String(sqsURL),
@@ -66,20 +72,15 @@ func main() {
 					QueueUrl:      aws.String(sqsURL),
 					ReceiptHandle: msghandler,
 				})
-				fmt.Println("received and deleting " + *body)
-				xray.AddMetadata(ctx, "SuccessMsg", "0")
-
+				fmt.Println(strconv.Itoa(c) + " received and deleting " + *body)
 			} else {
-				xray.AddMetadata(ctx, "FailMsg", "0")
+				fmt.Println("no messages retrieved")
 			}
+
+			// increase total count
+			c++
 
 			return nil
 		})
-
-		SubSeg.Close(nil)
-		Seg.Close(nil)
-
-		c++
-		fmt.Println(c)
 	}
 }

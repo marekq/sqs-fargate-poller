@@ -9,7 +9,7 @@ build_md5   = subprocess.check_output(['md5', '-q', build_file])
 
 # check if the md5's of go source code are different
 if src_md5 != build_md5:
-    print("\ndifferent file content detected between:")
+    print("\nLAMBDA - different file content detected between:")
     print("\ncurrent lambda sourcecode - " + str(src_md5) + " " + src_file)
     print("\ncached build sourcecode   - " + str(build_md5)+ " " + build_file)
     print("\nbuilding go binary in Docker container from " + src_file + "\n")
@@ -32,4 +32,4 @@ if src_md5 != build_md5:
     os.system("docker rm " + docker_id)
 
 else:
-    print("\nno different file content found, exiting")
+    print("\nLAMBDA - no different file content found in " + src_file + ", exiting")

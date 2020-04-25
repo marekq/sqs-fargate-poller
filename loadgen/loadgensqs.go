@@ -42,7 +42,7 @@ func handler(ctx context.Context) {
 	xray.AWS(svc.Client)
 
 	// create trace for every message group
-	for tot := 0; tot < (msgc); tot++ {
+	for tot := 1; tot < (msgc); tot++ {
 
 		// retrieve context for xray and start subsegment
 		_, Seg := xray.BeginSubsegment(ctx, "sqs")
@@ -51,7 +51,7 @@ func handler(ctx context.Context) {
 		xray.Capture(ctx, "SendMsg", func(ctx1 context.Context) error {
 			ri := strconv.Itoa(rand.Intn(999))
 
-			// send one message
+			// send one message to the queue
 			_, err := svc.SendMessageWithContext(ctx, &sqs.SendMessageInput{
 				MessageBody: aws.String(ri),
 				QueueUrl:    aws.String(urlqueue),
